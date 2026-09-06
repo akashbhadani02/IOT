@@ -1,7 +1,6 @@
-backend/.env
-frontend/.env
 node_modules/
-**/node_modules/
-frontend/dist/
-backend/dist/
+.env
+.env.local
+dist/
+.vite/
 *.log
