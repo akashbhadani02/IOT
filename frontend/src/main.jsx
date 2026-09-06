@@ -1,3 +1,4 @@
+import "./style.css";
 import { useEffect, useState } from "react";
 
 const API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
@@ -271,7 +272,7 @@ function App() {
       setDeviceLoading(false);
     }
   }
- 
+
   // =====================================================
   // RELAY ON / OFF
   // =====================================================
@@ -484,7 +485,7 @@ function App() {
       <section className="panel">
 
         <h2>Add Device</h2>
- 
+
         <form
           className="add-device"
           onSubmit={createDevice}
