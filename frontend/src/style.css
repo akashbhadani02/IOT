@@ -1,3 +1,67 @@
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.error-message {
+  background: #fee2e2;
+  color: #b91c1c;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.secondary-button {
+  width: 100%;
+  margin-top: 10px;
+  background: #eef2ff !important;
+  color: #1d4ed8 !important;
+}
+
+.brand-icon {
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-name {
+  font-weight: 600;
+}
+
+.token-box {
+  margin-top: 20px;
+  background: #f8fafc;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.token-box code {
+  display: block;
+  margin-top: 10px;
+  word-break: break-all;
+  font-size: 12px;
+}
+
 * {
   box-sizing: border-box;
 }
