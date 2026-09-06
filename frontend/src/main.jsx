@@ -1,7 +1,7 @@
-import "./style.css";
 import { useEffect, useState } from "react";
+import "./style.css";
 
-const API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
 
 const DEFAULT_PINS = [
   { pin: "D0", name: "Relay 1", type: "relay", state: false },
@@ -15,715 +15,374 @@ const DEFAULT_PINS = [
 function normalizeDevice(device) {
   if (!device) return null;
 
-  const existingPins = Array.isArray(device.pins)
-    ? device.pins
-    : [];
-
-  const pins = DEFAULT_PINS.map((defaultPin) => {
-    const found = existingPins.find(
-      (p) => p && p.pin === defaultPin.pin
-    );
-
-    return {
-      ...defaultPin,
-      ...(found || {}),
-      state: Boolean(found?.state),
-    };
-  });
+  const existingPins = Array.isArray(device.pins) ? device.pins : [];
 
   return {
     ...device,
-    pins,
+    pins: DEFAULT_PINS.map((fallback) => {
+      const found = existingPins.find((pin) => pin?.pin === fallback.pin);
+      return {
+        ...fallback,
+        ...(found || {}),
+        state: Boolean(found?.state),
+      };
+    }),
   };
 }
 
-function App() {
-  const [token, setToken] = useState(
-    localStorage.getItem("token") || ""
-  );
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
+}
 
-  const [devices, setDevices] = useState([]);
-  const [selectedDevice, setSelectedDevice] = useState(null);
+async function request(path, options = {}) {
+  const response = await fetch(`${API}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
 
+  const text = await response.text();
+  let data = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      response.ok
+        ? "Invalid server response"
+        : `Server returned HTTP ${response.status}`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(data.message || `Request failed (${response.status})`);
+  }
+
+  return data;
+}
+
+function Auth({ onLogin }) {
+  const [register, setRegister] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  const [name, setName] = useState("");
-
   const [loading, setLoading] = useState(false);
-  const [deviceLoading, setDeviceLoading] = useState(false);
-  const [relayLoading, setRelayLoading] = useState("");
-
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  // =====================================================
-  // SHOW MESSAGE
-  // =====================================================
-
-  function showMessage(text) {
-    setMessage(text);
-    setError("");
-  }
-
-  function showError(text) {
-    setError(text);
-    setMessage("");
-  }
-
-  // =====================================================
-  // LOGIN
-  // =====================================================
-
-  async function login(e) {
-    e.preventDefault();
-
+  async function submit(event) {
+    event.preventDefault();
     setLoading(true);
-    setMessage("");
     setError("");
+    setMessage("");
 
     try {
-      const res = await fetch(`${API}/api/auth/login`, {
+      if (register) {
+        await request("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify({ name, email, password }),
+        });
+      }
+
+      const data = await request("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-        }),
+        body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Login failed");
-      }
-
-      if (!data.token) {
-        throw new Error("Login successful, but token was not received");
-      }
-
       localStorage.setItem("token", data.token);
-
-      setToken(data.token);
-      setPassword("");
-
-      showMessage("Login successful");
-
-    } catch (err) {
-      showError(err.message || "Login failed");
+      localStorage.setItem("user", JSON.stringify(data.user));
+      onLogin(data.user, data.token);
+    } catch (error) {
+      setError(error.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
   }
 
-  // =====================================================
-  // LOGOUT
-  // =====================================================
+  return (
+    <div className="auth-page">
+      <div className="login-card">
+        <div className="brand-icon">⚡</div>
+        <h1>ESP8266 IoT</h1>
+        <p className="muted">{register ? "Create your account" : "Login to your dashboard"}</p>
+
+        <form onSubmit={submit}>
+          {register && (
+            <input
+              type="text"
+              placeholder="Name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+          )}
+
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+
+          <input
+            type="password"
+            placeholder="Password (minimum 6 characters)"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            minLength={6}
+            required
+          />
+
+          {error && <div className="error-message">{error}</div>}
+          {message && <div className="message">{message}</div>}
+
+          <button type="submit" disabled={loading}>
+            {loading ? "Please wait..." : register ? "Create Account" : "Login"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            setRegister((value) => !value);
+            setError("");
+            setMessage("");
+          }}
+        >
+          {register ? "Already have an account? Login" : "Create a new account"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [token, setToken] = useState(() => localStorage.getItem("token") || "");
+  const [user, setUser] = useState(getStoredUser);
+  const [devices, setDevices] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [deviceName, setDeviceName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [relayLoading, setRelayLoading] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  function showError(text) {
+    setMessage("");
+    setError(text);
+  }
+
+  function showMessage(text) {
+    setError("");
+    setMessage(text);
+  }
 
   function logout() {
     localStorage.removeItem("token");
-
+    localStorage.removeItem("user");
     setToken("");
+    setUser(null);
     setDevices([]);
     setSelectedDevice(null);
-
-    setEmail("");
-    setPassword("");
-    setMessage("");
-    setError("");
   }
-
-  // =====================================================
-  // GET DEVICES
-  // =====================================================
 
   async function loadDevices() {
     if (!token) return;
 
-    setDeviceLoading(true);
-
+    setLoading(true);
     try {
-      const res = await fetch(`${API}/api/devices`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const data = await request("/api/devices", {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          logout();
-          return;
-        }
-
-        throw new Error(
-          data.message || "Failed to load devices"
-        );
-      }
-
-      const loadedDevices = Array.isArray(data.devices)
-        ? data.devices.map(normalizeDevice)
-        : [];
-
-      setDevices(loadedDevices);
+      const normalized = (data.devices || []).map(normalizeDevice);
+      setDevices(normalized);
 
       setSelectedDevice((current) => {
-        if (!loadedDevices.length) {
-          return null;
-        }
-
         if (current) {
-          const updated = loadedDevices.find(
-            (device) =>
-              device.deviceId === current.deviceId
-          );
-
-          if (updated) {
-            return updated;
-          }
+          return normalized.find((device) => device.deviceId === current.deviceId) || normalized[0] || null;
         }
-
-        return loadedDevices[0];
+        return normalized[0] || null;
       });
-
-    } catch (err) {
-      showError(
-        err.message || "Failed to load devices"
-      );
+    } catch (error) {
+      if (/unauthorized/i.test(error.message)) logout();
+      else showError(error.message);
     } finally {
-      setDeviceLoading(false);
+      setLoading(false);
     }
   }
 
-  // =====================================================
-  // CREATE DEVICE
-  // =====================================================
+  async function createDevice(event) {
+    event.preventDefault();
+    const name = deviceName.trim();
 
-  async function createDevice(e) {
-    e.preventDefault();
-
-    const deviceName = name.trim();
-
-    if (!deviceName) {
+    if (!name) {
       showError("Device name is required");
       return;
     }
 
-    setDeviceLoading(true);
-    setMessage("");
-    setError("");
-
+    setLoading(true);
     try {
-      const res = await fetch(`${API}/api/devices`, {
+      const data = await request("/api/devices", {
         method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-
-        body: JSON.stringify({
-          name: deviceName,
-        }),
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          logout();
-          return;
-        }
-
-        throw new Error(
-          data.message || "Failed to create device"
-        );
-      }
-
-      const newDevice = normalizeDevice(data.device);
-
-      setName("");
-
-      if (newDevice) {
-        setDevices((prev) => [
-          newDevice,
-          ...prev.filter(
-            (device) =>
-              device.deviceId !== newDevice.deviceId
-          ),
-        ]);
-
-        setSelectedDevice(newDevice);
-      } else {
-        await loadDevices();
-      }
-
+      const device = normalizeDevice(data.device);
+      setDevices((current) => [device, ...current.filter((item) => item.deviceId !== device.deviceId)]);
+      setSelectedDevice(device);
+      setDeviceName("");
       showMessage("Device created successfully");
-
-    } catch (err) {
-      showError(
-        err.message || "Failed to create device"
-      );
+    } catch (error) {
+      if (/unauthorized/i.test(error.message)) logout();
+      else showError(error.message);
     } finally {
-      setDeviceLoading(false);
+      setLoading(false);
     }
   }
 
-  // =====================================================
-  // RELAY ON / OFF
-  // =====================================================
-
   async function toggleRelay(pin, currentState) {
-    if (!selectedDevice) {
-      showError("Please select a device");
-      return;
-    }
-
-    if (!pin) {
-      showError("Invalid relay pin");
-      return;
-    }
-
-    const newState = !Boolean(currentState);
+    if (!selectedDevice) return;
 
     setRelayLoading(pin);
-    setMessage("");
     setError("");
+    setMessage("");
 
     try {
-      const res = await fetch(
-        `${API}/api/devices/${encodeURIComponent(
-          selectedDevice.deviceId
-        )}/pin/${encodeURIComponent(pin)}`,
+      const data = await request(
+        `/api/devices/${encodeURIComponent(selectedDevice.deviceId)}/pin/${encodeURIComponent(pin)}`,
         {
           method: "PUT",
-
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-
-          body: JSON.stringify({
-            state: newState,
-          }),
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ state: !Boolean(currentState) }),
         }
       );
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          logout();
-          return;
-        }
-
-        throw new Error(
-          data.message || "Relay control failed"
-        );
-      }
-
-      const updatedDevice = normalizeDevice(
-        data.device
-      );
-
-      if (!updatedDevice) {
-        throw new Error(
-          "Server did not return updated device"
-        );
-      }
-
-      setSelectedDevice(updatedDevice);
-
-      setDevices((prev) =>
-        prev.map((device) =>
-          device.deviceId === updatedDevice.deviceId
-            ? updatedDevice
-            : device
-        )
-      );
-
-      showMessage(
-        `${pin} ${newState ? "ON" : "OFF"}`
-      );
-
-    } catch (err) {
-      showError(
-        err.message || "Relay control failed"
-      );
+      const updated = normalizeDevice(data.device);
+      setSelectedDevice(updated);
+      setDevices((current) => current.map((device) => device.deviceId === updated.deviceId ? updated : device));
+      showMessage(`${pin} ${!currentState ? "ON" : "OFF"}`);
+    } catch (error) {
+      if (/unauthorized/i.test(error.message)) logout();
+      else showError(error.message);
     } finally {
       setRelayLoading("");
     }
   }
 
-  // =====================================================
-  // LOAD DEVICES AFTER LOGIN
-  // =====================================================
-
   useEffect(() => {
-    if (token) {
-      loadDevices();
-    }
+    if (token) loadDevices();
   }, [token]);
 
-  // =====================================================
-  // LOGIN PAGE
-  // =====================================================
-
   if (!token) {
-    return (
-      <div className="app">
-
-        <div className="login-card">
-
-          <h1>ESP8266 IoT</h1>
-
-          <p>
-            Login to your dashboard
-          </p>
-
-          <form onSubmit={login}>
-
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) =>
-                setEmail(e.target.value)
-              }
-              required
-            />
-
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) =>
-                setPassword(e.target.value)
-              }
-              required
-            />
-
-            <button
-              type="submit"
-              disabled={loading}
-            >
-              {loading
-                ? "Logging in..."
-                : "Login"}
-            </button>
-
-          </form>
-
-          {message && (
-            <div className="message">
-              {message}
-            </div>
-          )}
-
-          {error && (
-            <div className="error-message">
-              {error}
-            </div>
-          )}
-
-        </div>
-
-      </div>
-    );
+    return <Auth onLogin={(loggedInUser, loggedInToken) => { setUser(loggedInUser); setToken(loggedInToken); }} />;
   }
-
-  // =====================================================
-  // DASHBOARD
-  // =====================================================
 
   return (
     <div className="app">
-
-      {/* HEADER */}
-
       <header className="header">
-
         <div>
-          <h1>ESP8266 IoT</h1>
-
-          <span>
-            Relay Control Dashboard
-          </span>
+          <h1>⚡ ESP8266 IoT</h1>
+          <span>Relay Control Dashboard</span>
         </div>
-
-        <button
-          className="logout"
-          onClick={logout}
-        >
-          Logout
-        </button>
-
+        <div className="header-right">
+          {user?.name && <span className="user-name">{user.name}</span>}
+          <button className="logout" onClick={logout}>Logout</button>
+        </div>
       </header>
 
-
-      {/* MESSAGE */}
-
-      {message && (
-        <div className="message">
-          {message}
-        </div>
-      )}
-
-      {error && (
-        <div className="error-message">
-          {error}
-        </div>
-      )}
-
-
-      {/* ADD DEVICE */}
+      {message && <div className="message">{message}</div>}
+      {error && <div className="error-message">{error}</div>}
 
       <section className="panel">
-
         <h2>Add Device</h2>
-
-        <form
-          className="add-device"
-          onSubmit={createDevice}
-        >
-
+        <form className="add-device" onSubmit={createDevice}>
           <input
             type="text"
             placeholder="Device name"
-            value={name}
-            onChange={(e) =>
-              setName(e.target.value)
-            }
+            value={deviceName}
+            onChange={(event) => setDeviceName(event.target.value)}
+            maxLength={80}
           />
-
-          <button
-            type="submit"
-            disabled={deviceLoading}
-          >
-            {deviceLoading
-              ? "Adding..."
-              : "Add Device"}
-          </button>
-
+          <button type="submit" disabled={loading}>{loading ? "Adding..." : "Add Device"}</button>
         </form>
-
       </section>
 
-
-      {/* DEVICE SELECT */}
-
       {devices.length > 0 && (
-
         <section className="panel">
-
           <h2>Your Devices</h2>
-
           <div className="devices">
-
             {devices.map((device) => (
-
               <button
                 key={device.deviceId}
-                className={
-                  selectedDevice?.deviceId ===
-                  device.deviceId
-                    ? "device selected"
-                    : "device"
-                }
-
-                onClick={() =>
-                  setSelectedDevice(
-                    normalizeDevice(device)
-                  )
-                }
+                className={`device ${selectedDevice?.deviceId === device.deviceId ? "selected" : ""}`}
+                onClick={() => setSelectedDevice(device)}
               >
-
-                <strong>
-                  {device.name ||
-                    "ESP8266 Device"}
-                </strong>
-
-                <small>
-                  {device.deviceId}
-                </small>
-
-                <small>
-                  Status:{" "}
-                  {device.status || "offline"}
-                </small>
-
+                <strong>{device.name || "ESP8266 Device"}</strong>
+                <small>{device.deviceId}</small>
+                <small>Status: {device.status || "offline"}</small>
               </button>
-
             ))}
-
           </div>
-
         </section>
-
       )}
 
+      {loading && devices.length === 0 && <section className="panel"><p>Loading devices...</p></section>}
 
-      {/* DEVICE LOADING */}
-
-      {deviceLoading &&
-        devices.length === 0 && (
-
-          <section className="panel">
-
-            <p>
-              Loading devices...
-            </p>
-
-          </section>
-
-        )}
-
-
-      {/* RELAYS */}
-
-      {selectedDevice &&
-        Array.isArray(selectedDevice.pins) && (
-
-          <section className="panel">
-
-            <div className="device-title">
-
-              <div>
-
-                <h2>
-                  {selectedDevice.name ||
-                    "ESP8266 Device"}
-                </h2>
-
-                <p>
-                  Device ID:{" "}
-                  {selectedDevice.deviceId}
-                </p>
-
-              </div>
-
-              <div
-                className={
-                  selectedDevice.status ===
-                  "online"
-                    ? "status online"
-                    : "status offline"
-                }
-              >
-                {selectedDevice.status ||
-                  "offline"}
-              </div>
-
+      {selectedDevice && (
+        <section className="panel">
+          <div className="device-title">
+            <div>
+              <h2>{selectedDevice.name || "ESP8266 Device"}</h2>
+              <p>Device ID: {selectedDevice.deviceId}</p>
             </div>
-
-
-            <div className="relay-grid">
-
-              {selectedDevice.pins.map(
-                (pin, index) => {
-
-                  const pinState =
-                    Boolean(pin?.state);
-
-                  const pinName =
-                    pin?.pin ||
-                    DEFAULT_PINS[index]?.pin ||
-                    `D${index}`;
-
-                  return (
-
-                    <div
-                      className={
-                        pinState
-                          ? "relay-card on"
-                          : "relay-card"
-                      }
-                      key={pinName}
-                    >
-
-                      <div className="relay-number">
-                        Relay {index + 1}
-                      </div>
-
-                      <h3>
-                        {pinName}
-                      </h3>
-
-                      <div
-                        className={
-                          pinState
-                            ? "relay-state on-text"
-                            : "relay-state"
-                        }
-                      >
-                        {pinState
-                          ? "ON"
-                          : "OFF"}
-                      </div>
-
-                      <button
-                        className={
-                          pinState
-                            ? "relay-button on-button"
-                            : "relay-button"
-                        }
-
-                        disabled={
-                          relayLoading ===
-                          pinName
-                        }
-
-                        onClick={() =>
-                          toggleRelay(
-                            pinName,
-                            pinState
-                          )
-                        }
-                      >
-                        {relayLoading === pinName
-                          ? "WAIT..."
-                          : pinState
-                            ? "TURN OFF"
-                            : "TURN ON"}
-                      </button>
-
-                    </div>
-
-                  );
-                }
-              )}
-
+            <div className={`status ${selectedDevice.status === "online" ? "online" : "offline"}`}>
+              {selectedDevice.status || "offline"}
             </div>
+          </div>
 
-          </section>
+          <div className="relay-grid">
+            {selectedDevice.pins.map((pin, index) => {
+              const state = Boolean(pin.state);
+              return (
+                <div className={`relay-card ${state ? "on" : ""}`} key={pin.pin}>
+                  <div className="relay-number">Relay {index + 1}</div>
+                  <h3>{pin.pin}</h3>
+                  <div className={`relay-state ${state ? "on-text" : ""}`}>{state ? "ON" : "OFF"}</div>
+                  <button
+                    className={`relay-button ${state ? "on-button" : ""}`}
+                    disabled={relayLoading === pin.pin}
+                    onClick={() => toggleRelay(pin.pin, state)}
+                  >
+                    {relayLoading === pin.pin ? "WAIT..." : state ? "TURN OFF" : "TURN ON"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
 
-        )}
+          <details className="token-box">
+            <summary>Device Token (for ESP8266)</summary>
+            <code>{selectedDevice.token}</code>
+          </details>
+        </section>
+      )}
 
-
-      {/* NO DEVICE */}
-
-      {!deviceLoading &&
-        devices.length === 0 && (
-
-          <section className="empty">
-
-            <h2>
-              No devices found
-            </h2>
-
-            <p>
-              Add your first ESP8266
-              device above.
-            </p>
-
-          </section>
-
-        )}
-
+      {!loading && devices.length === 0 && (
+        <section className="empty">
+          <h2>No devices found</h2>
+          <p>Add your first ESP8266 device above.</p>
+        </section>
+      )}
     </div>
   );
 }
