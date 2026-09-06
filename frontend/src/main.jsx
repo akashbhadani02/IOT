@@ -254,29 +254,79 @@ function App() {
   async function toggleRelay(pin, currentState) {
     if (!selectedDevice) return;
 
-    setRelayLoading(pin);
-    setError("");
-    setMessage("");
+    const newState = !Boolean(currentState);
+    const deviceId = selectedDevice.deviceId;
 
+    // INSTANT UI: change the relay card immediately, without waiting for API.
+    const optimistic = {
+      ...selectedDevice,
+      pins: selectedDevice.pins.map((item) =>
+        item.pin === pin ? { ...item, state: newState } : item
+      ),
+    };
+    setSelectedDevice(optimistic);
+    setDevices((current) =>
+      current.map((device) =>
+        device.deviceId === deviceId
+          ? {
+              ...device,
+              pins: device.pins.map((item) =>
+                item.pin === pin ? { ...item, state: newState } : item
+              ),
+            }
+          : device
+      )
+    );
+    showMessage(`${pin} ${newState ? "ON" : "OFF"}`);
+
+    // Send to backend in background; UI does not wait.
+    setError("");
     try {
       const data = await request(
-        `/api/devices/${encodeURIComponent(selectedDevice.deviceId)}/pin/${encodeURIComponent(pin)}`,
+        `/api/devices/${encodeURIComponent(deviceId)}/pin/${encodeURIComponent(pin)}`,
         {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ state: !Boolean(currentState) }),
+          body: JSON.stringify({ state: newState }),
         }
       );
 
+      // Reconcile with server response after it arrives.
       const updated = normalizeDevice(data.device);
-      setSelectedDevice(updated);
-      setDevices((current) => current.map((device) => device.deviceId === updated.deviceId ? updated : device));
-      showMessage(`${pin} ${!currentState ? "ON" : "OFF"}`);
+      setSelectedDevice((current) =>
+        current?.deviceId === deviceId ? updated : current
+      );
+      setDevices((current) =>
+        current.map((device) =>
+          device.deviceId === deviceId ? updated : device
+        )
+      );
     } catch (error) {
+      // Roll back only if the server rejected the command.
+      setSelectedDevice((current) =>
+        current?.deviceId === deviceId
+          ? {
+              ...current,
+              pins: current.pins.map((item) =>
+                item.pin === pin ? { ...item, state: Boolean(currentState) } : item
+              ),
+            }
+          : current
+      );
+      setDevices((current) =>
+        current.map((device) =>
+          device.deviceId === deviceId
+            ? {
+                ...device,
+                pins: device.pins.map((item) =>
+                  item.pin === pin ? { ...item, state: Boolean(currentState) } : item
+                ),
+              }
+            : device
+        )
+      );
       if (/unauthorized/i.test(error.message)) logout();
       else showError(error.message);
-    } finally {
-      setRelayLoading("");
     }
   }
 
@@ -365,10 +415,9 @@ function App() {
                   <div className={`relay-state ${state ? "on-text" : ""}`}>{state ? "ON" : "OFF"}</div>
                   <button
                     className={`relay-button ${state ? "on-button" : ""}`}
-                    disabled={relayLoading === pin.pin}
                     onClick={() => toggleRelay(pin.pin, state)}
                   >
-                    {relayLoading === pin.pin ? "WAIT..." : state ? "TURN OFF" : "TURN ON"}
+                    {state ? "TURN OFF" : "TURN ON"}
                   </button>
                 </div>
               );

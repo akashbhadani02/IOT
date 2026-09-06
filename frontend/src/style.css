@@ -118,3 +118,12 @@ button[type="submit"]:hover { background: #1d4ed8; transform: translateY(-1px); 
   .login-card { padding: 25px 19px; }
   .header h1 { font-size: 21px; }
 }
+
+
+/* Instant relay UI feedback */
+.relay-button {
+  transition: transform 0.08s ease, opacity 0.08s ease, background 0.08s ease;
+}
+.relay-button:active {
+  transform: scale(0.97);
+}
