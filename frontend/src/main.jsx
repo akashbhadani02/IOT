@@ -172,7 +172,7 @@ function App() {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [deviceName, setDeviceName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [relayLoading, setRelayLoading] = useState("");
+  const [creatingDevice, setCreatingDevice] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -230,7 +230,7 @@ function App() {
       return;
     }
 
-    setLoading(true);
+    setCreatingDevice(true);
     try {
       const data = await request("/api/devices", {
         method: "POST",
@@ -247,7 +247,7 @@ function App() {
       if (/unauthorized/i.test(error.message)) logout();
       else showError(error.message);
     } finally {
-      setLoading(false);
+      setCreatingDevice(false);
     }
   }
 
@@ -368,7 +368,7 @@ function App() {
             onChange={(event) => setDeviceName(event.target.value)}
             maxLength={80}
           />
-          <button type="submit" disabled={loading}>{loading ? "Adding..." : "Add Device"}</button>
+          <button type="submit" disabled={creatingDevice}>{creatingDevice ? "Adding..." : "Add Device"}</button>
         </form>
       </section>
 
@@ -405,20 +405,34 @@ function App() {
             </div>
           </div>
 
-          <div className="relay-grid">
-            {selectedDevice.pins.map((pin, index) => {
+          <div className="relay-list">
+            {selectedDevice.pins.map((pin) => {
               const state = Boolean(pin.state);
               return (
-                <div className={`relay-card ${state ? "on" : ""}`} key={pin.pin}>
-                  <div className="relay-number">Relay {index + 1}</div>
-                  <h3>{pin.pin}</h3>
-                  <div className={`relay-state ${state ? "on-text" : ""}`}>{state ? "ON" : "OFF"}</div>
-                  <button
-                    className={`relay-button ${state ? "on-button" : ""}`}
-                    onClick={() => toggleRelay(pin.pin, state)}
-                  >
-                    {state ? "TURN OFF" : "TURN ON"}
-                  </button>
+                <div className="relay-row" key={pin.pin}>
+                  <div className="relay-pin">{pin.pin}</div>
+                  <div className="relay-actions">
+                    <button
+                      type="button"
+                      className={`relay-switch on-switch ${state ? "active" : ""}`}
+                      onClick={() => {
+                        if (!state) toggleRelay(pin.pin, state);
+                      }}
+                    >
+                      <span className="switch-knob" />
+                      <span>ON</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`relay-switch off-switch ${!state ? "active" : ""}`}
+                      onClick={() => {
+                        if (state) toggleRelay(pin.pin, state);
+                      }}
+                    >
+                      <span className="switch-knob" />
+                      <span>OFF</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}

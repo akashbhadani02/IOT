@@ -24,7 +24,7 @@ const char* PIN_NAMES[6] = {"D0", "D1", "D2", "D5", "D6", "D7"};
 bool relayState[6] = {false, false, false, false, false, false};
 
 unsigned long lastCommandPoll = 0;
-const unsigned long COMMAND_INTERVAL = 1500;
+const unsigned long COMMAND_INTERVAL = 200;
 
 unsigned long lastHeartbeat = 0;
 const unsigned long HEARTBEAT_INTERVAL = 10000;
