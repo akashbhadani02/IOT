@@ -1,83 +1,394 @@
-import React, { useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useState } from "react";
 import "./style.css";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/+$/, "");
 
-async function api(path, options = {}) {
-  const res = await fetch(`${API}${path}`, {
+const DEFAULT_PINS = [
+  { pin: "D0", name: "Relay 1", type: "relay", state: false },
+  { pin: "D1", name: "Relay 2", type: "relay", state: false },
+  { pin: "D2", name: "Relay 3", type: "relay", state: false },
+  { pin: "D5", name: "Relay 4", type: "relay", state: false },
+  { pin: "D6", name: "Relay 5", type: "relay", state: false },
+  { pin: "D7", name: "Relay 6", type: "relay", state: false },
+];
+
+function normalizeDevice(device) {
+  if (!device) return null;
+
+  const existingPins = Array.isArray(device.pins) ? device.pins : [];
+
+  return {
+    ...device,
+    pins: DEFAULT_PINS.map((fallback) => {
+      const found = existingPins.find((pin) => pin?.pin === fallback.pin);
+      return {
+        ...fallback,
+        ...(found || {}),
+        state: Boolean(found?.state),
+      };
+    }),
+  };
+}
+
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
+}
+
+async function request(path, options = {}) {
+  const response = await fetch(`${API}${path}`, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) }
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || "Request failed");
+
+  const text = await response.text();
+  let data = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(
+      response.ok
+        ? "Invalid server response"
+        : `Server returned HTTP ${response.status}`
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(data.message || `Request failed (${response.status})`);
+  }
+
   return data;
 }
 
 function Auth({ onLogin }) {
   const [register, setRegister] = useState(false);
-  const [form, setForm] = useState({ name:"", email:"", password:"" });
-  const [error, setError] = useState("");
-
-  async function submit(e) {
-    e.preventDefault(); setError("");
-    try {
-      if (register) await api("/api/auth/register", {method:"POST", body:JSON.stringify(form)});
-      const data = await api("/api/auth/login", {method:"POST", body:JSON.stringify({email:form.email,password:form.password})});
-      localStorage.setItem("token", data.token); localStorage.setItem("user", JSON.stringify(data.user));
-      onLogin(data.user);
-    } catch (e) { setError(e.message); }
-  }
-
-  return <div className="auth"><form onSubmit={submit} className="card auth-card">
-    <h1>⚡ ESP8266 IoT</h1><p className="muted">{register ? "Create account" : "Sign in to dashboard"}</p>
-    {register && <input placeholder="Name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required />}
-    <input type="email" placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required />
-    <input type="password" placeholder="Password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required />
-    {error && <div className="error">{error}</div>}
-    <button>{register ? "Create account" : "Login"}</button>
-    <button type="button" className="secondary" onClick={()=>setRegister(!register)}>{register ? "Already have account?" : "Create new account"}</button>
-  </form></div>;
-}
-
-function Dashboard({ user, logout }) {
-  const [devices, setDevices] = useState([]);
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  async function load() {
-    try { setDevices((await api("/api/devices",{headers:{Authorization:`Bearer ${localStorage.getItem("token")}`}})).devices); }
-    catch(e){setError(e.message)}
-  }
-  useEffect(()=>{load()},[]);
+  async function submit(event) {
+    event.preventDefault();
+    setLoading(true);
+    setError("");
+    setMessage("");
 
-  async function addDevice(e) {
-    e.preventDefault();
     try {
-      await api("/api/devices",{method:"POST",headers:{Authorization:`Bearer ${localStorage.getItem("token")}`},body:JSON.stringify({name})});
-      setName(""); load();
-    } catch(e){setError(e.message)}
+      if (register) {
+        await request("/api/auth/register", {
+          method: "POST",
+          body: JSON.stringify({ name, email, password }),
+        });
+      }
+
+      const data = await request("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      onLogin(data.user, data.token);
+    } catch (error) {
+      setError(error.message || "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  return <div className="page">
-    <header><div><strong>⚡ ESP8266 IoT</strong><span className="muted">Dashboard</span></div><div>{user.name} <button className="small" onClick={logout}>Logout</button></div></header>
-    <main>
-      <div className="top"><div><h2>My Devices</h2><p className="muted">Manage your ESP8266 devices</p></div>
-      <form onSubmit={addDevice} className="add"><input placeholder="Device name" value={name} onChange={e=>setName(e.target.value)} required/><button>Add Device</button></form></div>
-      {error && <div className="error">{error}</div>}
-      {devices.length===0 ? <div className="card empty">No devices yet. Add your first ESP8266.</div> :
-      <div className="grid">{devices.map(d=><div className="card device" key={d._id}>
-        <div className="device-head"><div><h3>{d.name}</h3><span className="muted">{d.deviceId}</span></div><span className="status">● {d.status}</span></div>
-        <div className="pins">{d.pins.map(p=><div className="pin" key={p.pin}><span>{p.name}<small>{p.pin}</small></span><button className={p.state?"on":""}>{p.state?"ON":"OFF"}</button></div>)}</div>
-        <details><summary>Device token</summary><code>{d.token}</code></details>
-      </div>)}</div>}
-    </main>
-  </div>;
+  return (
+    <div className="auth-page">
+      <div className="login-card">
+        <div className="brand-icon">⚡</div>
+        <h1>ESP8266 IoT</h1>
+        <p className="muted">{register ? "Create your account" : "Login to your dashboard"}</p>
+
+        <form onSubmit={submit}>
+          {register && (
+            <input
+              type="text"
+              placeholder="Name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+          )}
+
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+          />
+
+          <input
+            type="password"
+            placeholder="Password (minimum 6 characters)"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            minLength={6}
+            required
+          />
+
+          {error && <div className="error-message">{error}</div>}
+          {message && <div className="message">{message}</div>}
+
+          <button type="submit" disabled={loading}>
+            {loading ? "Please wait..." : register ? "Create Account" : "Login"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => {
+            setRegister((value) => !value);
+            setError("");
+            setMessage("");
+          }}
+        >
+          {register ? "Already have an account? Login" : "Create a new account"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function App() {
-  const [user,setUser]=useState(()=>JSON.parse(localStorage.getItem("user")||"null"));
-  if (!user) return <Auth onLogin={setUser}/>;
-  return <Dashboard user={user} logout={()=>{localStorage.clear();setUser(null)}}/>;
+  const [token, setToken] = useState(() => localStorage.getItem("token") || "");
+  const [user, setUser] = useState(getStoredUser);
+  const [devices, setDevices] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [deviceName, setDeviceName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [relayLoading, setRelayLoading] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  function showError(text) {
+    setMessage("");
+    setError(text);
+  }
+
+  function showMessage(text) {
+    setError("");
+    setMessage(text);
+  }
+
+  function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setToken("");
+    setUser(null);
+    setDevices([]);
+    setSelectedDevice(null);
+  }
+
+  async function loadDevices() {
+    if (!token) return;
+
+    setLoading(true);
+    try {
+      const data = await request("/api/devices", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const normalized = (data.devices || []).map(normalizeDevice);
+      setDevices(normalized);
+
+      setSelectedDevice((current) => {
+        if (current) {
+          return normalized.find((device) => device.deviceId === current.deviceId) || normalized[0] || null;
+        }
+        return normalized[0] || null;
+      });
+    } catch (error) {
+      if (/unauthorized/i.test(error.message)) logout();
+      else showError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function createDevice(event) {
+    event.preventDefault();
+    const name = deviceName.trim();
+
+    if (!name) {
+      showError("Device name is required");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await request("/api/devices", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name }),
+      });
+
+      const device = normalizeDevice(data.device);
+      setDevices((current) => [device, ...current.filter((item) => item.deviceId !== device.deviceId)]);
+      setSelectedDevice(device);
+      setDeviceName("");
+      showMessage("Device created successfully");
+    } catch (error) {
+      if (/unauthorized/i.test(error.message)) logout();
+      else showError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleRelay(pin, currentState) {
+    if (!selectedDevice) return;
+
+    setRelayLoading(pin);
+    setError("");
+    setMessage("");
+
+    try {
+      const data = await request(
+        `/api/devices/${encodeURIComponent(selectedDevice.deviceId)}/pin/${encodeURIComponent(pin)}`,
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ state: !Boolean(currentState) }),
+        }
+      );
+
+      const updated = normalizeDevice(data.device);
+      setSelectedDevice(updated);
+      setDevices((current) => current.map((device) => device.deviceId === updated.deviceId ? updated : device));
+      showMessage(`${pin} ${!currentState ? "ON" : "OFF"}`);
+    } catch (error) {
+      if (/unauthorized/i.test(error.message)) logout();
+      else showError(error.message);
+    } finally {
+      setRelayLoading("");
+    }
+  }
+
+  useEffect(() => {
+    if (!token) return;
+
+    loadDevices();
+    const timer = setInterval(loadDevices, 3000);
+    return () => clearInterval(timer);
+  }, [token]);
+
+  if (!token) {
+    return <Auth onLogin={(loggedInUser, loggedInToken) => { setUser(loggedInUser); setToken(loggedInToken); }} />;
+  }
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div>
+          <h1>⚡ ESP8266 IoT</h1>
+          <span>Relay Control Dashboard</span>
+        </div>
+        <div className="header-right">
+          {user?.name && <span className="user-name">{user.name}</span>}
+          <button className="logout" onClick={logout}>Logout</button>
+        </div>
+      </header>
+
+      {message && <div className="message">{message}</div>}
+      {error && <div className="error-message">{error}</div>}
+
+      <section className="panel">
+        <h2>Add Device</h2>
+        <form className="add-device" onSubmit={createDevice}>
+          <input
+            type="text"
+            placeholder="Device name"
+            value={deviceName}
+            onChange={(event) => setDeviceName(event.target.value)}
+            maxLength={80}
+          />
+          <button type="submit" disabled={loading}>{loading ? "Adding..." : "Add Device"}</button>
+        </form>
+      </section>
+
+      {devices.length > 0 && (
+        <section className="panel">
+          <h2>Your Devices</h2>
+          <div className="devices">
+            {devices.map((device) => (
+              <button
+                key={device.deviceId}
+                className={`device ${selectedDevice?.deviceId === device.deviceId ? "selected" : ""}`}
+                onClick={() => setSelectedDevice(device)}
+              >
+                <strong>{device.name || "ESP8266 Device"}</strong>
+                <small>{device.deviceId}</small>
+                <small>Status: {device.status || "offline"}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {loading && devices.length === 0 && <section className="panel"><p>Loading devices...</p></section>}
+
+      {selectedDevice && (
+        <section className="panel">
+          <div className="device-title">
+            <div>
+              <h2>{selectedDevice.name || "ESP8266 Device"}</h2>
+              <p>Device ID: {selectedDevice.deviceId}</p>
+            </div>
+            <div className={`status ${selectedDevice.status === "online" ? "online" : "offline"}`}>
+              {selectedDevice.status || "offline"}
+            </div>
+          </div>
+
+          <div className="relay-grid">
+            {selectedDevice.pins.map((pin, index) => {
+              const state = Boolean(pin.state);
+              return (
+                <div className={`relay-card ${state ? "on" : ""}`} key={pin.pin}>
+                  <div className="relay-number">Relay {index + 1}</div>
+                  <h3>{pin.pin}</h3>
+                  <div className={`relay-state ${state ? "on-text" : ""}`}>{state ? "ON" : "OFF"}</div>
+                  <button
+                    className={`relay-button ${state ? "on-button" : ""}`}
+                    disabled={relayLoading === pin.pin}
+                    onClick={() => toggleRelay(pin.pin, state)}
+                  >
+                    {relayLoading === pin.pin ? "WAIT..." : state ? "TURN OFF" : "TURN ON"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <details className="token-box">
+            <summary>Device Token (for ESP8266)</summary>
+            <code>{selectedDevice.token}</code>
+          </details>
+        </section>
+      )}
+
+      {!loading && devices.length === 0 && (
+        <section className="empty">
+          <h2>No devices found</h2>
+          <p>Add your first ESP8266 device above.</p>
+        </section>
+      )}
+    </div>
+  );
 }
-createRoot(document.getElementById("root")).render(<App/>);
+
+export default App;

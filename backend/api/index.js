@@ -9,15 +9,22 @@ const deviceRoutes = require("../src/routes/devices");
 
 const app = express();
 
+app.disable("x-powered-by");
+
 app.use(
   cors({
     origin: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Device-Token",
+      "device-token",
+    ],
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "100kb" }));
 
 app.get("/", (req, res) => {
   res.json({
@@ -26,35 +33,56 @@ app.get("/", (req, res) => {
   });
 });
 
-let cached = global.__mongooseConnection;
+app.get("/api/health", (req, res) => {
+  res.json({
+    success: true,
+    server: "online",
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+  });
+});
+
+// Vercel/serverless-safe MongoDB connection cache.
+let dbPromise = global.__mongooseConnectionPromise || null;
 
 async function connectDB() {
-  if (cached && cached.readyState === 1) {
-    return cached;
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
   }
 
-  cached = await mongoose.connect(process.env.MONGO_URI, {
-    serverSelectionTimeoutMS: 10000,
-  });
+  if (!process.env.MONGO_URI) {
+    throw new Error("MONGO_URI is not configured");
+  }
 
-  global.__mongooseConnection = cached;
+  if (!dbPromise) {
+    dbPromise = mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 10000,
+      maxPoolSize: 10,
+    });
+    global.__mongooseConnectionPromise = dbPromise;
+  }
 
-  return cached;
+  try {
+    await dbPromise;
+  } catch (error) {
+    dbPromise = null;
+    global.__mongooseConnectionPromise = null;
+    throw error;
+  }
+
+  return mongoose.connection;
 }
 
-// IMPORTANT:
-// Database connection BEFORE API routes
+// IMPORTANT: database connection must happen before any API route query.
 app.use(async (req, res, next) => {
-  if (req.path === "/") {
+  if (req.path === "/" || req.path === "/api/health") {
     return next();
   }
 
   try {
     await connectDB();
     next();
-  } catch (err) {
-    console.error("MongoDB connection failed:", err);
-
+  } catch (error) {
+    console.error("MongoDB connection failed:", error);
     res.status(500).json({
       success: false,
       message: "Database connection failed",
@@ -64,6 +92,23 @@ app.use(async (req, res, next) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/devices", deviceRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "API route not found",
+  });
+});
+
+app.use((error, req, res, next) => {
+  console.error("Unhandled server error:", error);
+  if (res.headersSent) return next(error);
+
+  res.status(500).json({
+    success: false,
+    message: "Server error",
+  });
+});
 
 module.exports = app;
 
@@ -76,8 +121,8 @@ if (require.main === module) {
         console.log(`Server running on http://localhost:${port}`);
       });
     })
-    .catch((err) => {
-      console.error("MongoDB connection failed:", err);
+    .catch((error) => {
+      console.error("MongoDB connection failed:", error);
       process.exit(1);
     });
 }

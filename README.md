@@ -1,45 +1,47 @@
-# ESP8266 IoT Platform — GitHub + Vercel Ready
+# ESP8266 IoT
 
-Full-stack starter:
-- Frontend: React + Vite
-- Backend: Express API, Vercel serverless compatible
-- Database: MongoDB Atlas
-- Auth: JWT + bcrypt
-- ESP8266 pins: D0, D1, D2, D5, D6, D7
+React/Vite frontend + Express/Mongoose backend for ESP8266 relay control.
 
-## GitHub / Vercel deployment
+## Backend local setup
 
-### Backend
-Deploy the `backend` directory as a Vercel project.
-Set these Environment Variables in Vercel:
-- `MONGO_URI`
-- `JWT_SECRET`
+1. `cd backend`
+2. `npm install`
+3. Create `.env`:
 
-The API URL will look like:
-`https://your-backend.vercel.app`
-
-### Frontend
-Deploy the `frontend` directory as a separate Vercel project.
-Set:
-- `VITE_API_URL=https://your-backend.vercel.app`
-
-Build command: `npm run build`
-Output directory: `dist`
-
-## Local development
-
-Backend:
-```bash
-cd backend
-npm install
-npm run dev
+```env
+MONGO_URI=your_mongodb_atlas_connection_string
+JWT_SECRET=your_long_random_secret
+PORT=5000
 ```
 
-Frontend:
-```bash
-cd frontend
-npm install
-npm run dev
+4. `npm start`
+5. Test: `http://localhost:5000/` and `http://localhost:5000/api/health`
+
+## Frontend local setup
+
+1. `cd frontend`
+2. `npm install`
+3. Create `.env`:
+
+```env
+VITE_API_URL=http://localhost:5000
 ```
 
-Do not commit `.env` files or secrets.
+4. `npm run dev`
+
+## Vercel
+
+### Backend project
+- Root Directory: `backend`
+- Build/Framework: Node.js / Vercel Node
+- The included `backend/vercel.json` routes requests to `api/index.js`.
+- Environment variables: `MONGO_URI`, `JWT_SECRET`
+
+### Frontend project
+- Root Directory: `frontend`
+- Framework Preset: Vite
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Environment variable: `VITE_API_URL=https://iot-flame-chi.vercel.app`
+
+Do not upload or commit `backend/.env`.
