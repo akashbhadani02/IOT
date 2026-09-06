@@ -484,7 +484,7 @@ function App() {
       <section className="panel">
 
         <h2>Add Device</h2>
-
+ 
         <form
           className="add-device"
           onSubmit={createDevice}
