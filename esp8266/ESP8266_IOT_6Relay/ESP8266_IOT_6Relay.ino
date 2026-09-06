@@ -16,8 +16,8 @@ const char* DEVICE_TOKEN = "PASTE_YOUR_DEVICE_TOKEN_HERE";
 
 // Relay module is normally ACTIVE LOW.
 // If your relay works opposite, change these two lines.
-#define RELAY_ON  LOW
-#define RELAY_OFF HIGH
+#define RELAY_ON  HIGH
+#define RELAY_OFF LOW
 
 const uint8_t RELAY_PINS[6] = {D0, D1, D2, D5, D6, D7};
 const char* PIN_NAMES[6] = {"D0", "D1", "D2", "D5", "D6", "D7"};
