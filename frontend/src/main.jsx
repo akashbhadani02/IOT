@@ -411,28 +411,15 @@ function App() {
               return (
                 <div className="relay-row" key={pin.pin}>
                   <div className="relay-pin">{pin.pin}</div>
-                  <div className="relay-actions">
-                    <button
-                      type="button"
-                      className={`relay-switch on-switch ${state ? "active" : ""}`}
-                      onClick={() => {
-                        if (!state) toggleRelay(pin.pin, state);
-                      }}
-                    >
-                      <span className="switch-knob" />
-                      <span>ON</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`relay-switch off-switch ${!state ? "active" : ""}`}
-                      onClick={() => {
-                        if (state) toggleRelay(pin.pin, state);
-                      }}
-                    >
-                      <span className="switch-knob" />
-                      <span>OFF</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    aria-label={`${pin.pin} ${state ? "ON" : "OFF"}`}
+                    className={`relay-toggle ${state ? "is-on" : "is-off"}`}
+                    onClick={() => toggleRelay(pin.pin, state)}
+                  >
+                    <span className="switch-knob" />
+                    <span className="switch-label">{state ? "ON" : "OFF"}</span>
+                  </button>
                 </div>
               );
             })}
