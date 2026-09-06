@@ -107,11 +107,11 @@ bool beginRequest(HTTPClient& http, WiFiClientSecure& client, const String& url)
 // Example: "pin":"D0","state":true
 // -----------------------------------------------------
 bool readPinState(const String& json, const String& pin, bool& state) {
-  String key = "\\\"pin\\\":\\\"" + pin + "\\\"";
+  String key = "\"pin\":\"" + pin + "\"";
   int pinPos = json.indexOf(key);
   if (pinPos < 0) return false;
 
-  int statePos = json.indexOf("\\\"state\\\":", pinPos);
+  int statePos = json.indexOf("\"state\":", pinPos);
   if (statePos < 0) return false;
 
   statePos += 8; // length of "state":
