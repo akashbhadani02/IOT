@@ -382,7 +382,6 @@ function App() {
                 className={`device ${selectedDevice?.deviceId === device.deviceId ? "selected" : ""}`}
                 onClick={() => setSelectedDevice(device)}
               >
-                <strong>{device.name || "ESP8266 Device"}</strong>
                 <small>{device.deviceId}</small>
                 <small>Status: {device.status || "offline"}</small>
               </button>
@@ -397,7 +396,7 @@ function App() {
         <section className="panel">
           <div className="device-title">
             <div>
-              <h2>{selectedDevice.name || "ESP8266 Device"}</h2>
+             
               <p>Device ID: {selectedDevice.deviceId}</p>
             </div>
             <div className={`status ${selectedDevice.status === "online" ? "online" : "offline"}`}>
