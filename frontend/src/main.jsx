@@ -372,30 +372,6 @@ function App() {
         </form>
       </section>
 
-      {devices.length > 0 && (
-        <section className="panel">
-          <h2>Your Devices</h2>
-          <div className="devices">
-            {devices.map((device) => (
-              <button
-                key={device.deviceId}
-                className={`device ${selectedDevice?.deviceId === device.deviceId ? "selected" : ""}`}
-                onClick={() => setSelectedDevice(device)}
-              >
-                <small>{device.deviceId}</small>
-                <small>Status: {device.status || "offline"}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {loading && devices.length === 0 && <section className="panel"><p>Loading devices...</p></section>}
-
-      {selectedDevice && (
-        <section className="panel">
-          <div className="device-title">
-            <div>
              
               <p>Device ID: {selectedDevice.deviceId}</p>
             </div>
